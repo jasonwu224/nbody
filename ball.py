@@ -33,25 +33,31 @@ class Ball:
     v -- initial velocity vector
          type tuple of floats, default (0, 0)
     
-    d -- 2d density (might change to 3d)'''
+    d -- 3d density
+    
+    L -- angular momentum (pos -> counterclockwise)'''
     def __init__(self,
                  m: float = 1.,
                  r: tuple[float, float] = (0., 0.), 
                  v: tuple[float, float] = (0., 0.),
-                 d: float = 1e9) -> None:
+                 d: float = 1e9,
+                 L: float = 0,
+                 dist_scale: float = 1) -> None:
         self.m = float(m)
-        self.density = d
-        self.r = array(r).astype(float)
-        self.v = array(v).astype(float)
+        self.d = d
+        self.r = array(r).astype(float) / dist_scale
+        self.v = array(v).astype(float) / dist_scale
+        self.L = L
     
     def __str__(self) -> str:
-        return f"{self.m} {self.density} {self.r} {self.v}"
+        return f"{self.m} {self.d} {self.r} {self.v}"
     
     def to_dict(self) -> dict:
         return {"m": self.m, 
-                "density": self.density, 
+                "d": self.d, 
                 "r": self.r.tolist(), 
-                "v": self.v.tolist()}
+                "v": self.v.tolist(),
+                "L": self.L}
     
     def update_velocity(self, other: 'Ball', timestep: int) -> None:
         '''Updates velocity using gravitational force of another ball and 
@@ -79,14 +85,24 @@ class Ball:
         timestep -- the timestep in milliseconds'''
         delta_t = timestep / 1000
         self.r += self.v * delta_t
-    
-    def get_momentum(self) -> ndarray:
+
+    def get_p(self) -> ndarray:
         '''Gets the momentum as a numpy array'''
         return self.m * self.v
+    
+    def get_I(self) -> float:
+        '''Gets the moment of inertia using 2/5 mr^2'''
+        # assumes sphere shape
+        return 0.4 * self.m * (self.get_radius() ** 2)
+    
+    def get_omega(self) -> float:
+        '''Gets the angular velocity'''
+        # L = Iw
+        return self.L / self.get_I()
 
     def get_KE(self) -> float:
-        '''Gets the kinetic energy using 0.5mv^2'''
-        return 0.5 * self.m * norm(self.v) ** 2
+        '''Gets the kinetic energy using 0.5mv^2 + 0.5Iw^2'''
+        return 0.5 * (self.m * norm(self.v) ** 2 + self.get_I() * self.get_omega() ** 2)
     
     def get_PE(self, other: 'Ball') -> float:
         '''Gets the potential energy using -Gm1m2/r'''
@@ -99,6 +115,6 @@ class Ball:
 
     def get_radius(self) -> float:
         '''Calculates ball's radius using its mass and density. Assumes 3d density'''
-        volume = self.m / self.density
+        volume = self.m / self.d
         # uses V = 4/3 pi r^3
         return cbrt(0.75 * volume / pi)

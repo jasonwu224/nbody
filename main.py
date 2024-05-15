@@ -6,8 +6,23 @@ from ball import Ball
 ######INIT######
 
 pygame.init()
-
 #####METHODS#####
+
+def load_system(id: str, path: str) -> System:
+    # note that this should load framerate too, but I always keep it at 50
+    with open(path, "r") as file:
+        json_str = file.readline()
+
+        while json_str != "":
+            data = json.loads(json_str)
+            # if found
+            if data["id"] == id:
+                ball_list = [Ball(**dict) for dict in data["system"]]
+                return System(ball_list)
+            
+            json_str = file.readline()
+    # if not found, raise error
+    raise FileNotFoundError()
 
 def create_system(n: int, size: tuple[int, int]) -> System:
     balls = []
@@ -36,13 +51,39 @@ TEXT_FONT = pygame.font.SysFont("Arial", FONT_SIZE)
 # if ratio is 2, 2x speed compared to timestep
 SPEED_OF_TIME_RATIO = 10
 FRAMERATE = 50
-NUM_BALLS = 10
+NUM_BALLS = 50
+# ratio pixel:meters
+DIST_SCALE = 1
 
 ####OBJECTS#####
 
 screen = pygame.display.set_mode(SIZE)
 clock = pygame.time.Clock()
-system = create_system(NUM_BALLS, SIZE)
+
+sys_type = "e"
+if sys_type == "random":
+    system = create_system(NUM_BALLS, SIZE)
+elif sys_type == "load":
+    system = load_system("103c21ed-b63a-459b-bf19-d39e9367a91b", "saves.txt")
+else:
+    # earth moon
+    DIST_SCALE = 1e-7
+    TIME_SCALE = 1e6
+
+    m_E = 5.972e24
+    m_m = 7.34767309e22
+
+    r_E = (width/4, height/2)
+    dist = 384.4e6
+    r_m = (width/4 + DIST_SCALE*dist, height/2)
+    
+    v_m = (0, 1022)
+
+    d_E = .5514  # density
+    d_m = .3344
+    earth = Ball(m_E, r_E, d=d_E, dist_scale=DIST_SCALE)
+    moon = Ball(m_m, r_m, v_m, d=d_m, dist_scale=DIST_SCALE)
+    system = System([earth, moon], DIST_SCALE, TIME_SCALE)
 
 init_system_list = system.to_list()
 ####LOOP#####
@@ -59,24 +100,32 @@ while running:
     for i in range(SPEED_OF_TIME_RATIO):
         system.update(dt)
 
-    tot_p, tot_E = system.get_info()
+    tot_p, tot_L, tot_E = system.get_info()
     # tiny momentum and energy are rounded to 0
     tot_p = round(tot_p, 0)  
     tot_E = round(tot_E, 0)
+    tot_L = round(tot_L, 0)
 
     screen.fill(BLACK)
 
     for ball in system.balls:
-        pygame.draw.circle(screen, WHITE, ball.r, ball.get_radius())
+        print(DIST_SCALE * ball.r, DIST_SCALE * ball.get_radius())
+        pygame.draw.circle(screen, 
+                           WHITE, 
+                           DIST_SCALE * ball.r, 
+                           DIST_SCALE * ball.get_radius())
+    pygame.draw.circle(screen, WHITE, system.get_center_of_mass(), 1)
     # format info
-    momentum_string = "momentum: {:.2e}".format(tot_p)
-    energy_string = "energy: {:.2e}".format(tot_E)
+    momentum_str = "momentum: {:.2e}".format(tot_p)
+    ang_momentum_str = "ang momentum: {:.2e}".format(tot_L)
+    energy_str = "energy: {:.2e}".format(tot_E)
     sim_time_elapsed = int(SPEED_OF_TIME_RATIO*(time_elapsed / 1000))
-    time_string = "time elapsed: {}".format(sim_time_elapsed)
+    time_str = "time elapsed: {}".format(sim_time_elapsed)
     # draw info
-    draw_text(screen, momentum_string, TEXT_FONT, WHITE, 10, 10)
-    draw_text(screen, energy_string, TEXT_FONT, WHITE, 10, 10 + FONT_SIZE)
-    draw_text(screen, time_string, TEXT_FONT, WHITE, 10, 10 + 2*FONT_SIZE)
+    draw_text(screen, momentum_str, TEXT_FONT, WHITE, 10, 10)
+    draw_text(screen, ang_momentum_str, TEXT_FONT, WHITE, 10, 10 + FONT_SIZE)
+    draw_text(screen, energy_str, TEXT_FONT, WHITE, 10, 10 + 2*FONT_SIZE)
+    draw_text(screen, time_str, TEXT_FONT, WHITE, 10, 10 + 3*FONT_SIZE)
 
     pygame.display.flip()
 
@@ -84,6 +133,8 @@ while running:
     dt = clock.tick(FRAMERATE)
     time_elapsed += dt
 
+
+print(system.balls[0].L)
 # save to file
 if True:
     rand_id = str(uuid4())
@@ -97,7 +148,8 @@ if True:
                   "dens": "kg/m^3", 
                   "pos": "m", 
                   "vel": "m/s", 
-                  "time": "s"},
+                  "time": "s",
+                  "ang_mom": "kg*m^2/s"},
         "system": init_system_list
     }
     with open("saves.txt", "a") as file:
@@ -133,4 +185,11 @@ a slider for speed or button to show/hide info
 compute total angular velocity?
 
 create galaxy density distribution 
+
+questions:
+is there a way to predict how long until a system stabilizes?
+why are stable orbits not forming anymore after I made changes to
+angular momentum, now they just swing apart
+is it possible to do advanced stuff like galaxy stuff in pygame
+what to do about velocity error
 '''
